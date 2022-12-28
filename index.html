@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AP Lit Worksheet</title>
+    <link rel="stylesheet" type="text/css" href="./index.css" />
+</head>
+<body>
+    
+    <h1>Vocab Scraper</h1>
+
+    <form class="container" >
+        <input id = "fileUploader" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <input id = "submit" type="button" value="Submit">
+    </form>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.4/xlsx.full.min.js"></script>
+    <script type="text/javascript" language="javascript">
+        function checkfile(sender) {
+            var validExts = new Array(".xlsx");
+            var fileExt = sender.value;
+            fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+            if (validExts.indexOf(fileExt) < 0) {
+              alert("Invalid file selected, valid files are of " +
+                       validExts.toString() + " types.");
+              return false;
+            }
+            else return true;
+        }
+
+        document.querySelector('body').addEventListener('click', event =>{
+            if(event.target.id=='submit'){
+                if(checkfile(document.getElementById('fileUploader'))){
+                //send data to server
+
+                const file = document.getElementById('fileUploader').files[0];
+
+
+                var reader = new FileReader();
+                reader.onload = function(event) {
+                    var data = event.target.result;
+                    var workbook = XLSX.read(data, {
+                        type: 'binary'
+                    });
+
+                    workbook.SheetNames.forEach((sheetName) => {
+
+                        var XL_row_object = XLSX.utils.sheet_to_row_object_array(workbook.Sheets[sheetName]);
+
+                        document.querySelector('.container').innerHTML = '';
+                        document.querySelector('.container').insertAdjacentHTML('afterbegin', '<div class="lds-ripple"><div></div><div></div></div>');
+                        document.querySelector('.container').insertAdjacentHTML('afterend', '<p class = "wait">Your assignment will be completed shortly.</p>');
+
+
+
+                        async function loopExcel(jsonList){
+
+                            for (let i = 1; i < jsonList.length; i++) {
+                                var object = jsonList[i];
+
+                                document.querySelector('.wait').innerText = 'Collecting data for: '+object["Vocab Word"];
+
+                                var data = await fetch('/sendData', {
+                                    method: 'POST',
+                                    headers: {
+                                    "Content-Type": "text/plain"
+                                    },
+                                    body: object["Vocab Word"].toString()
+                                })
+
+                                data = await data.text();
+
+                                data = JSON.parse(data);
+                                
+                                object["part of speech"] = data.type;
+                                object["definition"] = data.def;
+                                object["conjugations"] = data.otherWords;
+                                object["Use the word in an original sentence."] = data.sent;
+
+                                document.querySelector('.wait').innerText = 'Finished: '+object["Vocab Word"];
+                            }
+
+                            return jsonList;
+
+                        }
+
+                        loopExcel(XL_row_object)
+                        .then((jsonData) => {
+
+                                //CONVERT JSON TO EXCL FILE
+
+                                var createXLSLFormatObj = [];
+
+                                /* XLS Head Columns */
+                                var xlsHeader = ["Vocab Word", "part of speech", "definition", "conjugations", "Use the word in an original sentence."];
+
+                                document.querySelector('.wait').innerText = 'Setting Headings...';
+
+
+                                createXLSLFormatObj.push(xlsHeader);
+
+                                document.querySelector('.wait').innerText = 'Inputing data to file...';
+
+                                for (let i = 0; i < jsonData.length; i++) {
+                                    createXLSLFormatObj.push(Object.values(jsonData[i]));
+                                }
+
+                                document.querySelector('.wait').innerText = 'Setting up final configuration settings...';
+
+                                /* File Name */
+                                var filename = "output.xlsx";
+
+                                /* Sheet Name */
+                                var ws_name = "output";
+
+                                var wb = XLSX.utils.book_new(),
+                                    ws = XLSX.utils.aoa_to_sheet(createXLSLFormatObj);
+
+                                /* Add worksheet to workbook */
+                                XLSX.utils.book_append_sheet(wb, ws, ws_name);
+
+                                XLSX.writeFile(wb, filename);
+
+                                document.querySelector('.container').innerHTML = '';
+                                document.querySelector('.container').insertAdjacentHTML('afterbegin', '<input id = "fileUploader" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /><input id = "submit" type="button" value="Submit">');
+                                document.querySelector('.wait').remove();
+                        })
+                        .catch(err => console.log(err));
+
+                    })
+                };
+
+                reader.onerror = (event) =>{
+                    console.error("File count not be read! Code: "+event.target.error.code);
+                };
+
+
+                reader.readAsBinaryString(file);
+
+            }
+            else{
+                document.getElementById('fileUploader').value='';
+            }
+            }
+        });
+    </script>
+</body>
+</html>
